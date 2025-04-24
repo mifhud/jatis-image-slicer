@@ -117,8 +117,8 @@ export default function ImageEditor({
       replaceValue: "",
       textAlign: "center",
       fontSize: "14px",
-      backgroundColor: "#fff",
-      color: "#000"
+      backgroundColor: "#ffffff",
+      color: "#000000"
     });
   };
 
@@ -164,8 +164,8 @@ export default function ImageEditor({
         replaceValue: "",
         textAlign: "center",
         fontSize: "14px",
-        backgroundColor: "#fff",
-        color: "#000"
+        backgroundColor: "#ffffff",
+        color: "#000000"
       });
     }
 
@@ -642,7 +642,7 @@ export default function ImageEditor({
                                   type="text"
                                   value={selections[editingIndex].backgroundColor}
                                   onChange={(e) => handleUpdateStyle("backgroundColor", e.target.value)}
-                                  placeholder="#fff"
+                                  placeholder="#ffffff"
                                 />
                                 <Input
                                   type="color"
@@ -660,7 +660,7 @@ export default function ImageEditor({
                                   type="text"
                                   value={selections[editingIndex].color}
                                   onChange={(e) => handleUpdateStyle("color", e.target.value)}
-                                  placeholder="#000"
+                                  placeholder="#000000"
                                 />
                                 <Input
                                   type="color"
