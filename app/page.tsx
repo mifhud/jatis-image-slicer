@@ -72,7 +72,7 @@ export default function Home() {
             <Card className="p-6">
               <ImageEditor
                 imageUrl={image}
-                originalFilename={originalFilename.split(" ").join("")}
+                originalFilename={originalFilename.replace(/[^a-zA-Z0-9]/g, '')}
                 selections={selections}
                 onAddSelection={handleAddSelection}
                 onUpdateSelection={handleUpdateSelection}
@@ -86,7 +86,7 @@ export default function Home() {
         <TabsContent value="preview">
           {slicedImage && (
             <Card className="p-6">
-              <ImagePreview html={slicedImage.html} files={slicedImage.files} originalFilename={originalFilename.split(" ").join("")} />
+              <ImagePreview html={slicedImage.html} files={slicedImage.files} originalFilename={originalFilename.replace(/[^a-zA-Z0-9]/g, '')} />
             </Card>
           )}
         </TabsContent>
