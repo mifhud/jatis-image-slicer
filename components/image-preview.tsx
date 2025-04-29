@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CardHeader, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, Code, Eye, Link, FileCheck, Copy, Check, Monitor, Smartphone, Edit, Save } from "lucide-react"
+import { Download, Code, Eye, Link, FileCheck, Copy, Check, Monitor, Smartphone, Edit, Save, Pencil } from "lucide-react"
+import { Input } from "@/components/ui/input" // Added Input import
 import { toast } from "@/components/ui/use-toast"
 
 interface ImagePreviewProps {
@@ -23,6 +24,8 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
   const [editableUpdatedHtml, setEditableUpdatedHtml] = useState("")
   const [isCopied, setIsCopied] = useState(false)
   const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop")
+  const [adjustmentFactor, setAdjustmentFactor] = useState("1.0") // New state for adjustment factor
+  const [tableWithDivExistsInHtml, setTableWithDivExistsInHtml] = useState(false) // State to track if table with div exists
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const updatedIframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -45,6 +48,12 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
   // Initialize the editable HTML when html prop changes
   useEffect(() => {
     setEditableHtml(html)
+    
+    // Check if HTML contains a div within a table
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, "text/html")
+    const tablesWithDivs = doc.querySelectorAll("table div")
+    setTableWithDivExistsInHtml(tablesWithDivs.length > 0)
   }, [html])
 
   // Initialize the editable updated HTML when updatedHtml changes
@@ -148,6 +157,86 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     });
   }
 
+  // Handle adjusting sibling images based on div font size - NEW FUNCTION
+  const handleAdjustSiblingImages = () => {
+    // Parse the HTML to manipulate it
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(editableHtml, "text/html");
+    
+    // Find all divs within tables
+    const tablesWithDivs = doc.querySelectorAll("table div");
+    
+    if (tablesWithDivs.length === 0) {
+      toast({
+        title: "No adjustable images found",
+        description: "Could not find any div elements within tables",
+        variant: "destructive",
+        duration: 2000,
+      });
+      return;
+    }
+    
+    let adjustmentsCount = 0;
+    
+    // Process each div within a table
+    tablesWithDivs.forEach(div => {
+      // Check if the div has a font-size style
+      const style = div.getAttribute("style");
+      if (!style || !style.includes("font-size")) return;
+      
+      // Extract the font size value (assuming it's in decimal format)
+      const fontSizeMatch = style.match(/font-size:\s*([\d.]+)(?:px|em|rem|pt)?/);
+      if (!fontSizeMatch) return;
+      
+      const fontSize = parseFloat(fontSizeMatch[1]);
+      if (isNaN(fontSize)) return;
+      
+      // Find the parent table
+      const parentTable = div.closest("table");
+      if (!parentTable) return;
+      
+      // Find images within the same parent table
+      const siblingImages = parentTable.querySelectorAll("img");
+      if (siblingImages.length === 0) return;
+      
+      // Apply the calculation to the image height
+      const factor = parseFloat(adjustmentFactor);
+      if (isNaN(factor)) return;
+      
+      const newHeight = fontSize * factor;
+      
+      siblingImages.forEach(img => {
+        // Get current style
+        let imgStyle = img.getAttribute("style") || "";
+        
+        // Remove existing height if present
+        imgStyle = imgStyle.replace(/height\s*:\s*[^;]+;?/, "").trim();
+
+        // Add new height
+        imgStyle += ` height: ${newHeight}px;`.replace(/;\s*;/, ";");
+        
+        // Set the updated style
+        img.setAttribute("style", imgStyle.trim());
+        adjustmentsCount++;
+      });
+    });
+    
+    // Update the HTML with our changes
+    const updatedContent = doc.body.innerHTML;
+    setEditableHtml(updatedContent);
+    
+    // Update the preview if active
+    if (activeTab === "preview") {
+      setTimeout(updateIframeContent, 50);
+    }
+    
+    toast({
+      title: "Images adjusted",
+      description: `Adjusted height for ${adjustmentsCount} image(s) based on div font size × ${adjustmentFactor}`,
+      duration: 2000,
+    });
+  }
+
   const handleCopyCode = (content: string) => {
     if (!content) return;
     
@@ -206,6 +295,12 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     if (activeTab === "preview") {
       setTimeout(updateIframeContent, 50);
     }
+    
+    // Check if HTML contains a div within a table after edit
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(e.target.value, "text/html");
+    const tablesWithDivs = doc.querySelectorAll("table div");
+    setTableWithDivExistsInHtml(tablesWithDivs.length > 0);
   }
 
   // Handle updated HTML editing
@@ -246,6 +341,31 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
           <Download className="mr-2 h-4 w-4" /> Download Files
         </Button>
       </div>
+
+      {/* New image adjustment UI */}
+      {tableWithDivExistsInHtml && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded p-4 flex items-center space-x-4">
+          <div className="flex-1">
+            <h3 className="text-sm font-medium text-yellow-800 mb-1">Adjust Sibling Images</h3>
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                step="0.1"
+                value={adjustmentFactor}
+                onChange={(e) => setAdjustmentFactor(e.target.value)}
+                className="max-w-xs"
+                placeholder="Adjustment Factor"
+              />
+              <Button onClick={handleAdjustSiblingImages}>
+                <Pencil className="mr-2 h-4 w-4" /> Adjust Sibling Images
+              </Button>
+            </div>
+            <p className="text-xs text-yellow-700 mt-1">
+              Multiplies div font-size with factor to set image height
+            </p>
+          </div>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
