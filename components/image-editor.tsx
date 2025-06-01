@@ -24,6 +24,8 @@ export default function ImageEditor({
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [scaleFactor, setScaleFactor] = useState(1);
   const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
+  const [resizeState, setResizeState] = useState({ isResizing: false, handle: null, index: null });
+  const [hoverHandle, setHoverHandle] = useState(null);
 
   const CANVAS_WIDTH = 640;
   const canvasRef = useRef(null);
@@ -76,6 +78,31 @@ export default function ImageEditor({
       } else {
         e.fillText(t.url ? "Link Area #" + (n + 1) : "Area #" + (n + 1), i + 5, r - 5);
       }
+      
+      // Draw resize handles if this selection is being edited
+      if (n === editingIndex) {
+        // Draw the resize handles
+        const handlePositions = [
+          { x: i, y: r, cursor: 'nwse-resize', handle: 'tl' }, // Top-left
+          { x: i + o, y: r, cursor: 'nesw-resize', handle: 'tr' }, // Top-right
+          { x: i, y: r + s, cursor: 'nesw-resize', handle: 'bl' }, // Bottom-left
+          { x: i + o, y: r + s, cursor: 'nwse-resize', handle: 'br' }, // Bottom-right
+          { x: i + o/2, y: r, cursor: 'ns-resize', handle: 'mt' }, // Middle-top
+          { x: i + o, y: r + s/2, cursor: 'ew-resize', handle: 'mr' }, // Middle-right
+          { x: i + o/2, y: r + s, cursor: 'ns-resize', handle: 'mb' }, // Middle-bottom
+          { x: i, y: r + s/2, cursor: 'ew-resize', handle: 'ml' } // Middle-left
+        ];
+        
+        handlePositions.forEach(pos => {
+          e.fillStyle = hoverHandle === pos.handle ? "#ff3e00" : "#ffffff";
+          e.strokeStyle = "#ff3e00";
+          e.lineWidth = 1;
+          e.beginPath();
+          e.arc(pos.x, pos.y, HANDLE_SIZE/2, 0, Math.PI * 2);
+          e.fill();
+          e.stroke();
+        });
+      }
     });
 
     if (isSelecting && currentSelection) {
@@ -94,9 +121,85 @@ export default function ImageEditor({
     x: Math.round(e / scaleFactor),
     y: Math.round(t / scaleFactor)
   });
+  
+  // Handle size in pixels
+  const HANDLE_SIZE = 8;
+  
+  // Check if mouse is over a resize handle
+  const getResizeHandle = (mouseX, mouseY) => {
+    if (!canvasRef.current) return null;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (mouseX - rect.left) * scaleX;
+    const y = (mouseY - rect.top) * scaleY;
+    
+    // Check each selection
+    for (let i = 0; i < selections.length; i++) {
+      const sel = selections[i];
+      const selX = sel.x * scaleFactor;
+      const selY = sel.y * scaleFactor;
+      const selWidth = sel.width * scaleFactor;
+      const selHeight = sel.height * scaleFactor;
+      
+      // Check each handle (corners and midpoints)
+      // Top-left
+      if (Math.abs(x - selX) <= HANDLE_SIZE && Math.abs(y - selY) <= HANDLE_SIZE) {
+        return { handle: 'tl', index: i };
+      }
+      // Top-right
+      if (Math.abs(x - (selX + selWidth)) <= HANDLE_SIZE && Math.abs(y - selY) <= HANDLE_SIZE) {
+        return { handle: 'tr', index: i };
+      }
+      // Bottom-left
+      if (Math.abs(x - selX) <= HANDLE_SIZE && Math.abs(y - (selY + selHeight)) <= HANDLE_SIZE) {
+        return { handle: 'bl', index: i };
+      }
+      // Bottom-right
+      if (Math.abs(x - (selX + selWidth)) <= HANDLE_SIZE && Math.abs(y - (selY + selHeight)) <= HANDLE_SIZE) {
+        return { handle: 'br', index: i };
+      }
+      // Middle-top
+      if (Math.abs(x - (selX + selWidth/2)) <= HANDLE_SIZE && Math.abs(y - selY) <= HANDLE_SIZE) {
+        return { handle: 'mt', index: i };
+      }
+      // Middle-right
+      if (Math.abs(x - (selX + selWidth)) <= HANDLE_SIZE && Math.abs(y - (selY + selHeight/2)) <= HANDLE_SIZE) {
+        return { handle: 'mr', index: i };
+      }
+      // Middle-bottom
+      if (Math.abs(x - (selX + selWidth/2)) <= HANDLE_SIZE && Math.abs(y - (selY + selHeight)) <= HANDLE_SIZE) {
+        return { handle: 'mb', index: i };
+      }
+      // Middle-left
+      if (Math.abs(x - selX) <= HANDLE_SIZE && Math.abs(y - (selY + selHeight/2)) <= HANDLE_SIZE) {
+        return { handle: 'ml', index: i };
+      }
+    }
+    
+    return null;
+  };
 
   const handleMouseDown = (e) => {
-    if (!isSelecting || !canvasRef.current) return;
+    if (!canvasRef.current) return;
+    
+    // Check if we're clicking on a resize handle
+    const resizeHandle = getResizeHandle(e.clientX, e.clientY);
+    
+    if (resizeHandle) {
+      // Start resizing
+      setResizeState({
+        isResizing: true,
+        handle: resizeHandle.handle,
+        index: resizeHandle.index
+      });
+      return;
+    }
+    
+    // If not resizing and not selecting, return
+    if (!isSelecting) return;
 
     const t = canvasRef.current;
     const n = t.getBoundingClientRect();
@@ -123,11 +226,10 @@ export default function ImageEditor({
   };
 
   const handleMouseMove = (e) => {
-    if (!isSelecting || !currentSelection || !canvasRef.current) return;
+    if (!canvasRef.current) return;
 
     const t = canvasRef.current;
     const n = t.getContext("2d");
-
     if (!n) return;
 
     const i = t.getBoundingClientRect();
@@ -135,42 +237,150 @@ export default function ImageEditor({
     const o = t.height / i.height;
     const s = (e.clientX - i.left) * r;
     const a = (e.clientY - i.top) * o;
+    
+    // Check for resize handle hover when not resizing
+    if (!resizeState.isResizing && !isSelecting) {
+      const resizeHandle = getResizeHandle(e.clientX, e.clientY);
+      setHoverHandle(resizeHandle ? resizeHandle.handle : null);
+      
+      // Update cursor based on which handle is being hovered
+      if (resizeHandle) {
+        const handle = resizeHandle.handle;
+        let cursor = 'default';
+        
+        if (handle === 'tl' || handle === 'br') cursor = 'nwse-resize';
+        else if (handle === 'tr' || handle === 'bl') cursor = 'nesw-resize';
+        else if (handle === 'mt' || handle === 'mb') cursor = 'ns-resize';
+        else if (handle === 'ml' || handle === 'mr') cursor = 'ew-resize';
+        
+        t.style.cursor = cursor;
+      } else {
+        t.style.cursor = isSelecting ? 'crosshair' : 'default';
+      }
+    }
+    
+    // Handle resizing
+    if (resizeState.isResizing && resizeState.index !== null) {
+      const selIndex = resizeState.index;
+      const handle = resizeState.handle;
+      const selection = selections[selIndex];
+      
+      // Convert to canvas coordinates
+      const selX = selection.x * scaleFactor;
+      const selY = selection.y * scaleFactor;
+      const selWidth = selection.width * scaleFactor;
+      const selHeight = selection.height * scaleFactor;
+      
+      let newX = selX;
+      let newY = selY;
+      let newWidth = selWidth;
+      let newHeight = selHeight;
+      
+      // Update dimensions based on which handle is being dragged
+      switch (handle) {
+        case 'tl': // Top-left
+          newX = s;
+          newY = a;
+          newWidth = selX + selWidth - s;
+          newHeight = selY + selHeight - a;
+          break;
+        case 'tr': // Top-right
+          newY = a;
+          newWidth = s - selX;
+          newHeight = selY + selHeight - a;
+          break;
+        case 'bl': // Bottom-left
+          newX = s;
+          newWidth = selX + selWidth - s;
+          newHeight = a - selY;
+          break;
+        case 'br': // Bottom-right
+          newWidth = s - selX;
+          newHeight = a - selY;
+          break;
+        case 'mt': // Middle-top
+          newY = a;
+          newHeight = selY + selHeight - a;
+          break;
+        case 'mr': // Middle-right
+          newWidth = s - selX;
+          break;
+        case 'mb': // Middle-bottom
+          newHeight = a - selY;
+          break;
+        case 'ml': // Middle-left
+          newX = s;
+          newWidth = selX + selWidth - s;
+          break;
+      }
+      
+      // Ensure width and height are positive
+      if (newWidth < 0) {
+        newX = newX + newWidth;
+        newWidth = Math.abs(newWidth);
+      }
+      
+      if (newHeight < 0) {
+        newY = newY + newHeight;
+        newHeight = Math.abs(newHeight);
+      }
+      
+      // Convert back to original coordinates and update the selection
+      onUpdateSelection(selIndex, {
+        ...selection,
+        x: Math.round(newX / scaleFactor),
+        y: Math.round(newY / scaleFactor),
+        width: Math.round(newWidth / scaleFactor),
+        height: Math.round(newHeight / scaleFactor)
+      });
+    }
+    
+    // Handle creating a new selection
+    if (isSelecting && currentSelection) {
+      const c = {
+        ...currentSelection,
+        width: s - currentSelection.x,
+        height: a - currentSelection.y
+      };
 
-    const c = {
-      ...currentSelection,
-      width: s - currentSelection.x,
-      height: a - currentSelection.y
-    };
-
-    setCurrentSelection(c);
+      setCurrentSelection(c);
+    }
+    
     drawSelections(n);
   };
 
   const handleMouseUp = () => {
-    if (!isSelecting || !currentSelection) return;
-
-    let { x: e, y: t, width: n, height: i, type } = currentSelection;
-
-    n < 0 && ((e += n), (n = Math.abs(n)));
-    i < 0 && ((t += i), (i = Math.abs(i)));
-
-    if (n > 5 && i > 5) {
-      onAddSelection({
-        ...canvasToOriginalCoords(e, t),
-        width: Math.round(n / scaleFactor),
-        height: Math.round(i / scaleFactor),
-        type,
-        url: "",
-        replaceValue: "",
-        textAlign: "center",
-        fontSize: "14px",
-        backgroundColor: "#ffffff",
-        color: "#000000"
-      });
+    // End resizing if we were resizing
+    if (resizeState.isResizing) {
+      setResizeState({ isResizing: false, handle: null, index: null });
+      return;
     }
+    
+    // Handle completing a new selection
+    if (isSelecting && currentSelection) {
+      let { x: e, y: t, width: n, height: i, type } = currentSelection;
 
-    setIsSelecting(false);
-    setCurrentSelection(null);
+      n < 0 && ((e += n), (n = Math.abs(n)));
+      i < 0 && ((t += i), (i = Math.abs(i)));
+
+      if (n > 5 && i > 5) {
+        onAddSelection({
+          ...canvasToOriginalCoords(e, t),
+          width: Math.round(n / scaleFactor),
+          height: Math.round(i / scaleFactor),
+          type,
+          url: "",
+          replaceValue: "",
+          textAlign: "center",
+          fontSize: "14px",
+          backgroundColor: "#ffffff",
+          color: "#000000"
+        });
+      }
+
+      setIsSelecting(false);
+      setCurrentSelection(null);
+    }
   };
 
   const handleNewSelection = (type) => {
@@ -465,12 +675,13 @@ export default function ImageEditor({
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
-                  className={`max-w-full ${
-                    isSelecting 
-                      ? "cursor-crosshair" 
-                      : "cursor-default"
-                  }`}
-                  style={{ width: "100%", maxWidth: "640px", height: "auto" }}
+                  className="max-w-full"
+                  style={{ 
+                    width: "100%", 
+                    maxWidth: "640px", 
+                    height: "auto",
+                    cursor: isSelecting ? "crosshair" : "default"
+                  }}
                 />
                 <img
                   ref={imageRef}
@@ -484,6 +695,13 @@ export default function ImageEditor({
                 <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
                   <p className="text-sm text-yellow-800">
                     Click and drag on the image to create a {selectionType === "replace" ? "replacement" : "selection"} area.
+                  </p>
+                </div>
+              )}
+              {editingIndex !== null && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-blue-800">
+                    Drag the handles to resize the selection. Different handles allow resizing in different directions.
                   </p>
                 </div>
               )}
