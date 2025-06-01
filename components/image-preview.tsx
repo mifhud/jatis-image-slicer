@@ -130,19 +130,49 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     const parser = new DOMParser();
     const doc = parser.parseFromString(newHtml, "text/html");
     
-    // Replace each filename with the corresponding URL in src attributes only
-    files.forEach((file, index) => {
-      if (index < lines.length && lines[index].trim() !== "") {
-        const newUrl = lines[index].trim();
-        
-        // Get all images with this source
-        const images = doc.querySelectorAll(`img[src*="${file.name}"]`);
-        images.forEach(img => {
-          // Replace only the src attribute, preserving alt and other attributes
-          img.setAttribute('src', img.getAttribute('src').replace(file.name, newUrl));
-        });
+    // Create a mapping of replacement URLs
+    const replacementMap: Record<string, string> = {};
+    
+    // Process each line to extract original filename and new URL
+    lines.forEach(line => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return;
+      
+      // Check if the line contains a mapping in format "originalName -> newUrl"
+      if (trimmedLine.includes("->")) {
+        const [originalName, newUrl] = trimmedLine.split("->").map(part => part.trim());
+        if (originalName && newUrl) {
+          replacementMap[originalName] = newUrl;
+        }
+      } else {
+        // If no mapping format, try to match with existing files
+        for (const file of files) {
+          if (trimmedLine.includes(file.name) || file.name.includes(trimmedLine)) {
+            replacementMap[file.name] = trimmedLine;
+            break;
+          }
+        }
       }
     });
+    
+    // If no mappings were created but we have lines and files, use the old sequential approach as fallback
+    if (Object.keys(replacementMap).length === 0 && lines.length > 0 && files.length > 0) {
+      files.forEach((file, index) => {
+        if (index < lines.length && lines[index].trim() !== "") {
+          replacementMap[file.name] = lines[index].trim();
+        }
+      });
+    }
+    
+    // Apply replacements for each file
+    for (const [fileName, newUrl] of Object.entries(replacementMap)) {
+      // Get all images with this source
+      const images = doc.querySelectorAll(`img[src*="${fileName}"]`);
+      images.forEach(img => {
+        // Replace only the src attribute, preserving alt and other attributes
+        img.setAttribute('src', img.getAttribute('src').replace(fileName, newUrl));
+      });
+    }
     
     // Extract the updated HTML
     const updatedContent = doc.body.innerHTML;
@@ -152,7 +182,7 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     
     toast({
       title: "URLs replaced",
-      description: "Image URLs have been successfully replaced",
+      description: `${Object.keys(replacementMap).length} image URLs have been successfully replaced`,
       duration: 2000,
     });
   }
@@ -417,7 +447,11 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <h3 className="text-lg font-semibold">Replace Image URLs</h3>
-                <p className="text-sm text-gray-500">Enter new URLs for each image, one per line</p>
+                <p className="text-sm text-gray-500">
+                  Enter new URLs for each image. You can use any of these formats:
+                  <br />• One URL per line (in any order)
+                  <br />• Original filename -> New URL (for explicit mapping)
+                </p>
               </div>
               <Button onClick={handleReplace}>
                 <Link className="mr-2 h-4 w-4" /> Replace
@@ -429,7 +463,13 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
                 style={{ height: "100vh" }}
                 value={replacementUrls}
                 onChange={(e) => setReplacementUrls(e.target.value)}
-                placeholder={files.map(file => file.name).join("\n")}
+                placeholder={`# Enter URLs in any of these formats:
+# Simple list (one URL per line):
+https://example.com/image1.jpg
+https://example.com/image2.jpg
+
+# Or with explicit mapping:
+${files.map(file => `${file.name} -> https://example.com/${file.name}`).join('\n')}`}
               />
             </CardContent>
           </Card>
