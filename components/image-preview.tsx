@@ -283,10 +283,10 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
         let imgStyle = img.getAttribute("style") || "";
         
         // Remove existing height if present
-        imgStyle = imgStyle.replace(/height\s*:\s*[^;]+;?/, "").trim();
+        imgStyle = imgStyle.replace(/min-height\s*:\s*[^;]+;?/, "").trim();
 
         // Add new height
-        imgStyle += ` height: ${newHeight}px;`.replace(/;\s*;/, ";");
+        imgStyle += ` min-height: ${newHeight}px;`.replace(/;\s*;/, ";");
         
         // Set the updated style
         img.setAttribute("style", imgStyle.trim());
