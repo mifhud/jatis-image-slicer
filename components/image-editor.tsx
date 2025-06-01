@@ -465,7 +465,11 @@ export default function ImageEditor({
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
-                  className={`cursor-${isSelecting ? "crosshair" : "default"} max-w-full`}
+                  className={`max-w-full ${
+                    isSelecting 
+                      ? "cursor-crosshair" 
+                      : "cursor-default"
+                  }`}
                   style={{ width: "100%", maxWidth: "640px", height: "auto" }}
                 />
                 <img
