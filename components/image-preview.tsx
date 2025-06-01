@@ -89,7 +89,21 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
       if (!doc) return
 
       doc.open()
-      doc.write(editableUpdatedHtml)
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Updated Preview</title>
+            <style>
+              body { margin: 0; padding: 0; }
+              img { max-width: 100%; }
+            </style>
+          </head>
+          <body>${editableUpdatedHtml}</body>
+        </html>
+      `)
       doc.close()
     }
   }
@@ -136,7 +150,7 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     // Process each line to extract original filename and new URL
     lines.forEach(line => {
       const trimmedLine = line.trim();
-      if (!trimmedLine) return;
+      if (!trimmedLine || trimmedLine.startsWith('#')) return; // Skip empty lines and comments
       
       // Check if the line contains a mapping in format "originalName -> newUrl"
       if (trimmedLine.includes("->")) {
@@ -158,7 +172,7 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     // If no mappings were created but we have lines and files, use the old sequential approach as fallback
     if (Object.keys(replacementMap).length === 0 && lines.length > 0 && files.length > 0) {
       files.forEach((file, index) => {
-        if (index < lines.length && lines[index].trim() !== "") {
+        if (index < lines.length && lines[index].trim() !== "" && !lines[index].trim().startsWith('#')) {
           replacementMap[file.name] = lines[index].trim();
         }
       });
@@ -178,7 +192,36 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     const updatedContent = doc.body.innerHTML;
     setUpdatedHtml(updatedContent);
     setEditableUpdatedHtml(updatedContent);
+    
+    // Ensure the images are properly loaded in the updated preview
     setActiveTab("preview-updated");
+    
+    // Add a small delay to ensure the iframe is ready before updating content
+    setTimeout(() => {
+      if (updatedIframeRef.current) {
+        const iframeDoc = updatedIframeRef.current.contentDocument;
+        if (iframeDoc) {
+          // Ensure the iframe document has proper HTML structure
+          iframeDoc.open();
+          iframeDoc.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Updated Preview</title>
+                <style>
+                  body { margin: 0; padding: 0; }
+                  img { max-width: 100%; }
+                </style>
+              </head>
+              <body>${updatedContent}</body>
+            </html>
+          `);
+          iframeDoc.close();
+        }
+      }
+    }, 100);
     
     toast({
       title: "URLs replaced",
@@ -468,8 +511,13 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
 https://example.com/image1.jpg
 https://example.com/image2.jpg
 
-# Or with explicit mapping:
-${files.map(file => `${file.name} -> https://example.com/${file.name}`).join('\n')}`}
+# Or with explicit mapping (recommended for accuracy):
+${files.map(file => `${file.name} -> https://example.com/${file.name}`).join('\n')}
+
+# Make sure URLs are accessible and images can load from them
+# For testing, you can use placeholder services like:
+# https://picsum.photos/200/300
+# https://via.placeholder.com/150`}
               />
             </CardContent>
           </Card>
