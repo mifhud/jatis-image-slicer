@@ -138,55 +138,45 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
   const handleReplace = () => {
     // Get the list of replacements
     const lines = replacementUrls.trim().split("\n");
-    let newHtml = editableHtml; // Using editableHtml instead of html
     
     // Create a temporary DOM parser to manipulate HTML safely
     const parser = new DOMParser();
-    const doc = parser.parseFromString(newHtml, "text/html");
+    const doc = parser.parseFromString(editableHtml, "text/html");
     
-    // Create a mapping of replacement URLs
-    const replacementMap: Record<string, string> = {};
+    // Get all images in the document
+    const images = doc.querySelectorAll("img");
     
-    // Process each line to extract original filename and new URL
-    lines.forEach(line => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith('#')) return; // Skip empty lines and comments
+    // Create a map of replacement URLs
+    const filteredUrls: string[] = lines.filter(line => line.trim());
+    
+    // Create a map to track which replacement URLs have been used
+    const usedUrls = new Set<string>();
+    
+    // Process each image
+    images.forEach(img => {
+      const alt = img.getAttribute('alt');
       
-      // Check if the line contains a mapping in format "originalName -> newUrl"
-      if (trimmedLine.includes("->")) {
-        const [originalName, newUrl] = trimmedLine.split("->").map(part => part.trim());
-        if (originalName && newUrl) {
-          replacementMap[originalName] = newUrl;
-        }
-      } else {
-        // If no mapping format, try to match with existing files
-        for (const file of files) {
-          if (trimmedLine.includes(file.name) || file.name.includes(trimmedLine)) {
-            replacementMap[file.name] = trimmedLine;
+      if (alt) {
+        // Extract the base filename without extension
+        const baseFilename = alt.replace(/\.[^/.]+$/, "").toLowerCase();
+        
+        // Find a matching URL that hasn't been used yet
+        for (const url of filteredUrls) {
+          if (usedUrls.has(url)) continue;
+          
+          const urlParts = url.split('/');
+          const urlFilename = urlParts[urlParts.length - 1];
+          const urlBaseFilename = urlFilename.replace(/\.[^/.]+$/, "").toLowerCase();
+          
+          // Check if the URL filename contains the alt filename (case insensitive)
+          if (urlBaseFilename.includes(baseFilename) || baseFilename.includes(urlBaseFilename)) {
+            img.setAttribute('src', url);
+            usedUrls.add(url);
             break;
           }
         }
       }
     });
-    
-    // If no mappings were created but we have lines and files, use the old sequential approach as fallback
-    if (Object.keys(replacementMap).length === 0 && lines.length > 0 && files.length > 0) {
-      files.forEach((file, index) => {
-        if (index < lines.length && lines[index].trim() !== "" && !lines[index].trim().startsWith('#')) {
-          replacementMap[file.name] = lines[index].trim();
-        }
-      });
-    }
-    
-    // Apply replacements for each file
-    for (const [fileName, newUrl] of Object.entries(replacementMap)) {
-      // Get all images with this source
-      const images = doc.querySelectorAll(`img[src*="${fileName}"]`);
-      images.forEach(img => {
-        // Replace only the src attribute, preserving alt and other attributes
-        img.setAttribute('src', img.getAttribute('src').replace(fileName, newUrl));
-      });
-    }
     
     // Extract the updated HTML
     const updatedContent = doc.body.innerHTML;
@@ -195,39 +185,6 @@ export default function ImagePreview({ html, files, originalFilename }: ImagePre
     
     // Ensure the images are properly loaded in the updated preview
     setActiveTab("preview-updated");
-    
-    // Add a small delay to ensure the iframe is ready before updating content
-    setTimeout(() => {
-      if (updatedIframeRef.current) {
-        const iframeDoc = updatedIframeRef.current.contentDocument;
-        if (iframeDoc) {
-          // Ensure the iframe document has proper HTML structure
-          iframeDoc.open();
-          iframeDoc.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Updated Preview</title>
-                <style>
-                  body { margin: 0; padding: 0; }
-                  img { max-width: 100%; }
-                </style>
-              </head>
-              <body>${updatedContent}</body>
-            </html>
-          `);
-          iframeDoc.close();
-        }
-      }
-    }, 100);
-    
-    toast({
-      title: "URLs replaced",
-      description: `${Object.keys(replacementMap).length} image URLs have been successfully replaced`,
-      duration: 2000,
-    });
   }
 
   // Handle adjusting sibling images based on div font size - NEW FUNCTION
